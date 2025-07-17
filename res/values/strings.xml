@@ -1,0 +1,10 @@
+<resources>
+    <string name="verify_dialog_summary">Before opening %s, please confirm your identity.</string>
+    <string name="verify_dialog_title">Verify your identity</string>
+    <string name="lockpassword_confirm_your_password_header">Re-enter your password</string>
+    <string name="lockpassword_confirm_your_pattern_header">Confirm your pattern</string>
+    <string name="lockpassword_confirm_your_pin_header">Re-enter your PIN</string>
+    <string name="nt_lockpassword_strong_auth_required_device_password">For added security, enter your privacy password</string>
+    <string name="nt_lockpassword_strong_auth_required_device_pattern">For added security, use your pattern (privacy password)</string>
+    <string name="nt_lockpassword_strong_auth_required_device_pin">For added security, enter your PIN (privacy password)</string>
+</resources>

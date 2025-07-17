@@ -1,0 +1,45 @@
+android_app {
+    name: "AppLocker",
+    manifest: "AndroidManifest.xml",
+
+    srcs: [
+        "src/**/*.kt",
+    ],
+    resource_dirs: ["res"],
+
+    certificate: "platform",
+    platform_apis: true,
+    privileged: true,
+    system_ext_specific: true,
+
+    optimize: {
+        enabled: true,
+    },
+
+    static_libs: [
+        "androidx.core_core-ktx",
+        "androidx.recyclerview_recyclerview",
+        "androidx.appcompat_appcompat",
+        "androidx.annotation_annotation",
+        "androidx.lifecycle_lifecycle-runtime-ktx",
+        "androidx.biometric_biometric",
+        "com.google.android.material_material",
+    ],
+
+    kotlincflags: [
+        "-Xjvm-default=all",
+        "-Xopt-in=kotlin.RequiresOptIn",
+    ],
+    
+    required: [
+        "privapp_whitelist_com.android.applocker",
+    ],
+}
+
+prebuilt_etc {
+     name: "privapp_whitelist_com.android.applocker",
+     system_ext_specific: true,
+     sub_dir: "permissions",
+     src: "privapp_whitelist_com.android.applocker.xml",
+     filename_from_src: true,
+}
