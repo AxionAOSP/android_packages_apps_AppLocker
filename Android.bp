@@ -13,10 +13,11 @@ android_app {
     system_ext_specific: true,
 
     optimize: {
-        enabled: true,
+        enabled: false,
     },
 
     static_libs: [
+        "androidx.activity_activity-compose",
         "androidx.core_core-ktx",
         "androidx.recyclerview_recyclerview",
         "androidx.appcompat_appcompat",
@@ -24,11 +25,19 @@ android_app {
         "androidx.lifecycle_lifecycle-runtime-ktx",
         "androidx.biometric_biometric",
         "com.google.android.material_material",
+        "androidx.compose.animation_animation-core",
+        "androidx.compose.foundation_foundation",
+        "androidx.compose.material3_material3",
+        "androidx.compose.material_material-icons-core",
+        "androidx.compose.material_material-icons-extended",
+        "androidx.compose.runtime_runtime",
+        "androidx.compose.ui_ui",
     ],
 
     kotlincflags: [
         "-Xjvm-default=all",
         "-Xopt-in=kotlin.RequiresOptIn",
+        "-P plugin:androidx.compose.compiler.plugins.kotlin:sourceInformation=true",
     ],
     
     required: [

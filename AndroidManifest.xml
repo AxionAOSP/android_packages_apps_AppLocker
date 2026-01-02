@@ -17,12 +17,15 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC_INTERNAL"/>
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.INTERNAL_SYSTEM_WINDOW"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <permission
         android:name="com.android.applocker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature"/>
     <uses-permission android:name="com.android.applocker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/>
     <application
-        android:theme="@style/AppTheme"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
         android:label="AppLocker"
         android:icon="@drawable/lock_icon"
         android:supportsRtl="true"
@@ -30,13 +33,19 @@
         android:roundIcon="@drawable/lock_icon"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory">
         <activity
-            android:theme="@style/AppTheme"
-            android:label="AppLocker Activity"
-            android:name="com.android.applocker.NTAppLockerActivity"
             android:exported="true"
+            android:process=":auth"
+            android:name="com.android.applocker.AuthenticateActivity"
             android:clearTaskOnLaunch="true"
             android:screenOrientation="portrait"
-            android:configChanges="smallestScreenSize|screenSize|uiMode|screenLayout|orientation"/>
+            android:configChanges="smallestScreenSize|screenSize|uiMode|screenLayout|orientation"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <intent-filter>
+                <action android:name="com.android.applocker.action.AUTHENTICATE"/>
+                <action android:name="com.android.applocker.action.SYSTEM_UNLOCK"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:exported="false"
