@@ -116,6 +116,17 @@ class SandboxSecurityManager(private val context: Context) {
     
     fun setBiometricEnabled(enabled: Boolean) {
         Settings.Secure.putInt(context.contentResolver, KEY_BIOMETRIC_ENABLED, if (enabled) 1 else 0)
+        if (!enabled) {
+            setPreferBiometric(false)
+        }
+    }
+
+    fun isPreferBiometric(): Boolean {
+        return Settings.Secure.getInt(context.contentResolver, KEY_PREFER_BIOMETRIC, 0) == 1
+    }
+
+    fun setPreferBiometric(preferred: Boolean) {
+        Settings.Secure.putInt(context.contentResolver, KEY_PREFER_BIOMETRIC, if (preferred) 1 else 0)
     }
     
     fun getPrivateSectionBehavior(): PrivateSectionBehavior {
@@ -202,6 +213,7 @@ class SandboxSecurityManager(private val context: Context) {
         private const val KEY_LOCK_TIMEOUT = "sandbox_lock_timeout"
         private const val KEY_LAST_UNLOCK_TIME = "sandbox_last_unlock_time"
         private const val KEY_BIOMETRIC_ENABLED = "sandbox_biometric_enabled"
+        private const val KEY_PREFER_BIOMETRIC = "sandbox_prefer_biometric"
         
         const val SETTING_LOCKED_APP_BEHAVIOR = "sandbox_locked_app_behavior"
         const val SETTING_LOCKED_APP_TIMEOUT = "sandbox_locked_app_timeout"

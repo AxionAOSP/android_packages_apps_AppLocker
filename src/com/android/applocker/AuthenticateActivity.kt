@@ -99,6 +99,7 @@ class AuthenticateActivity : ComponentActivity() {
                     
                     var appLabel by remember { mutableStateOf<String?>(null) }
                     var biometricType by remember { mutableStateOf(SandboxSecurityManager.BiometricType.NONE) }
+                    var isPreferBiometric by remember { mutableStateOf(false) }
                     
                     LaunchedEffect(Unit) {
                         withContext(Dispatchers.IO) {
@@ -117,9 +118,12 @@ class AuthenticateActivity : ComponentActivity() {
                                     SandboxSecurityManager.BiometricType.NONE
                             }
                             
+                            val preferBio = securityManager.isPreferBiometric()
+                            
                             withContext(Dispatchers.Main) {
                                 appLabel = label
                                 biometricType = bioType
+                                isPreferBiometric = preferBio
                             }
                         }
                     }
@@ -135,6 +139,7 @@ class AuthenticateActivity : ComponentActivity() {
                             onCancel = { startExitAnimation(false) },
                             biometricType = biometricType,
                             onBiometricClick = { showBiometricPrompt(appLabel ?: "App") },
+                            isPreferBiometric = isPreferBiometric,
                             isExiting = isExiting.value
                         )
                     }
@@ -161,9 +166,16 @@ class AuthenticateActivity : ComponentActivity() {
     
 
     private fun showBiometricPrompt(label: String) {
+        val negativeButtonText = when (securityManager.getSecurityType()) {
+            SecurityType.PIN -> "Use PIN"
+            SecurityType.PASSWORD -> "Use Password"
+            SecurityType.PATTERN -> "Use Pattern"
+            else -> "Cancel"
+        }
+
         val prompt = BiometricPrompt.Builder(this)
             .setTitle("Unlock $label")
-            .setNegativeButton("Cancel", mainExecutor) { _, _ -> 
+            .setNegativeButton(negativeButtonText, mainExecutor) { _, _ -> 
                 
             }
             .setAllowedAuthenticators(
@@ -183,7 +195,10 @@ class AuthenticateActivity : ComponentActivity() {
                 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                     super.onAuthenticationError(errorCode, errString)
-                    
+                    if (errorCode != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED && 
+                        errorCode != BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON) {
+                        cancelAndFinish()
+                    }
                 }
             }
         )
@@ -322,8 +337,15 @@ fun AuthenticateScreen(
     onCancel: () -> Unit,
     biometricType: SandboxSecurityManager.BiometricType = SandboxSecurityManager.BiometricType.NONE,
     onBiometricClick: () -> Unit = {},
+    isPreferBiometric: Boolean = false,
     isExiting: Boolean = false
 ) {
+    LaunchedEffect(biometricType) {
+        if (biometricType != SandboxSecurityManager.BiometricType.NONE && isPreferBiometric) {
+            onBiometricClick()
+        }
+    }
+
     val securityType = securityManager.getSecurityType()
     val promptText = "Enter your Sandbox credential to unlock $appLabel"
     
