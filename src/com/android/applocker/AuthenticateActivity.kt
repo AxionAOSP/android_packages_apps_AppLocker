@@ -296,21 +296,6 @@ class AuthenticateActivity : ComponentActivity() {
         }
     }
     
-    private fun isAppInFreeformDisplay(): Boolean {
-        return try {
-            val displayManager = getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
-            if (displayManager != null) {
-                val display = this.display ?: displayManager.getDisplay(Display.DEFAULT_DISPLAY)
-                val displayId = display?.displayId ?: Display.DEFAULT_DISPLAY
-                displayManager.isFreeformDisplayId(displayId)
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
-    }
-    
     private fun isScreenOn(): Boolean {
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         return powerManager?.isInteractive ?: false
