@@ -6,9 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.hardware.biometrics.BiometricPrompt
 import android.hardware.biometrics.BiometricManager
-import android.hardware.display.DisplayManager
-import android.os.*
-import android.view.Display
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
+import android.os.UserHandle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -43,8 +46,8 @@ class AuthenticateActivity : ComponentActivity() {
 
     private var resultIntent: Intent? = null
     private var isAuthSuccess = false
-    private var failedTime: Long = 0
-    
+    private var isShowingBiometric = false
+
     private var isExiting = mutableStateOf(false)
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,6 +169,7 @@ class AuthenticateActivity : ComponentActivity() {
     
 
     private fun showBiometricPrompt(label: String) {
+        isShowingBiometric = true
         val negativeButtonText = when (securityManager.getSecurityType()) {
             SecurityType.PIN -> "Use PIN"
             SecurityType.PASSWORD -> "Use Password"
@@ -175,11 +179,11 @@ class AuthenticateActivity : ComponentActivity() {
 
         val prompt = BiometricPrompt.Builder(this)
             .setTitle("Unlock $label")
-            .setNegativeButton(negativeButtonText, mainExecutor) { _, _ -> 
-                
+            .setNegativeButton(negativeButtonText, mainExecutor) { _, _ ->
+                isShowingBiometric = false
             }
             .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or 
+                BiometricManager.Authenticators.BIOMETRIC_STRONG or
                 BiometricManager.Authenticators.BIOMETRIC_WEAK
             )
             .build()
@@ -190,12 +194,14 @@ class AuthenticateActivity : ComponentActivity() {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                     super.onAuthenticationSucceeded(result)
+                    isShowingBiometric = false
                     startExitAnimation(true)
                 }
-                
+
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                     super.onAuthenticationError(errorCode, errString)
-                    if (errorCode != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED && 
+                    isShowingBiometric = false
+                    if (errorCode != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED &&
                         errorCode != BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON) {
                         cancelAndFinish()
                     }
@@ -206,28 +212,24 @@ class AuthenticateActivity : ComponentActivity() {
     
     private fun setupWindowForOverlay() {
         window?.apply {
-            addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED)
-            setType(WindowManager.LayoutParams.TYPE_STATUS_BAR_SUB_PANEL)
-            
             addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS 
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             )
-            
+
             addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
-            
+
             attributes = attributes?.apply {
-                privateFlags = privateFlags or 
-                    WindowManager.LayoutParams.SYSTEM_FLAG_SHOW_FOR_ALL_USERS or
-                    WindowManager.LayoutParams.PRIVATE_FLAG_TRUSTED_OVERLAY
+                privateFlags = privateFlags or
+                    WindowManager.LayoutParams.SYSTEM_FLAG_SHOW_FOR_ALL_USERS
             }
         }
     }
 
     private fun unlockAndFinish() {
+        if (isFinishing) return
         packageName?.let { pkg ->
             val sandboxManager = getSystemService(Context.AX_SANDBOX_SERVICE) as? AxSandboxManager
             sandboxManager?.unlockApp(pkg, userId)
@@ -238,69 +240,38 @@ class AuthenticateActivity : ComponentActivity() {
         }
         setResult(Activity.RESULT_OK, resultIntent)
         isAuthSuccess = true
-        
         finish()
-        overridePendingTransition(0, 0) 
     }
-    
+
     private fun cancelAndFinish() {
+        if (isFinishing) return
         resultIntent?.apply {
             putExtra(EXTRA_LOCKED_PACKAGE, packageName)
             putExtra(EXTRA_LOCKED_UID, userId)
         }
         setResult(Activity.RESULT_CANCELED, resultIntent)
-        
-        failedTime = SystemClock.elapsedRealtime()
-        
-        moveTaskToBack(true)
-        
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        startActivity(homeIntent)
-        
-        finishAndCleanup()
-    }
-    
-    override fun onPause() {
-        super.onPause()
-        if (!isChangingConfigurations && !isAuthSuccess) {
-             finishAndCleanup()
-        }
-    }
-    
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        finishAndCleanup()
-    }
-    
-    private fun finishAndCleanup() {
-        finish()
-        overridePendingTransition(0, 0)
-        
-        
-        
-        Handler(Looper.getMainLooper()).postDelayed({
-             Process.killProcess(Process.myPid())
-        }, 300)
+        finishAndRemoveTask()
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        
-        if (hasFocus && isAuthSuccess) {
-            finishAndCleanup()
-            isAuthSuccess = false
-            return
+    override fun onPause() {
+        super.onPause()
+        if (!isChangingConfigurations && !isAuthSuccess && !isShowingBiometric) {
+            cancelAndFinish()
         }
     }
-    
-    private fun isScreenOn(): Boolean {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
-        return powerManager?.isInteractive ?: false
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!isShowingBiometric) {
+            cancelAndFinish()
+        }
     }
-    
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Process.killProcess(Process.myPid())
+    }
+
     companion object {
         const val EXTRA_PACKAGE_NAME = "package_name"
         const val EXTRA_APP_LABEL = "app_label"
