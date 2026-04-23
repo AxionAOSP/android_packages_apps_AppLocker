@@ -11,9 +11,11 @@ android_app {
     platform_apis: true,
     privileged: true,
     system_ext_specific: true,
+    use_embedded_native_libs: true,
 
     optimize: {
-        enabled: false,
+        enabled: true,
+        shrink_resources: true,
     },
 
     static_libs: [
@@ -23,6 +25,9 @@ android_app {
         "androidx.appcompat_appcompat",
         "androidx.annotation_annotation",
         "androidx.lifecycle_lifecycle-runtime-ktx",
+        "androidx.lifecycle_lifecycle-process",
+        "androidx.emoji2_emoji2",
+        "androidx.startup_startup-runtime",
         "androidx.biometric_biometric",
         "com.google.android.material_material",
         "androidx.compose.animation_animation-core",

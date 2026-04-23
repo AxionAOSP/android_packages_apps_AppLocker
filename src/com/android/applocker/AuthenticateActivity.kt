@@ -8,24 +8,20 @@ import android.hardware.biometrics.BiometricPrompt
 import android.hardware.biometrics.BiometricManager
 import android.os.Bundle
 import android.os.CancellationSignal
-import android.os.Handler
-import android.os.Looper
 import android.os.Process
 import android.os.UserHandle
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.*
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import com.android.applocker.security.SecurityType
 import com.android.applocker.security.SandboxSecurityManager
 import com.android.applocker.ui.LockScreen
@@ -38,111 +34,94 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class AuthenticateActivity : ComponentActivity() {
-    
+
+    private enum class AuthState { IDLE, PROMPT_SHOWING, EXITING, FINISHED }
+
     private lateinit var securityManager: SandboxSecurityManager
     private var packageName: String? = null
     private var userId: Int = 0
-    private var isSystemUnlock: Boolean = false
+    private var appLabel: String = "App"
 
-    private var resultIntent: Intent? = null
-    private var isAuthSuccess = false
-    private var isShowingBiometric = false
+    private var authState: AuthState = AuthState.IDLE
+    private var biometricCancellationSignal: CancellationSignal? = null
 
-    private var isExiting = mutableStateOf(false)
-    
+    private val isExiting = mutableStateOf(false)
+    private val hasWindowFocus = mutableStateOf(false)
+    private val securitySnapshot = mutableStateOf<SecuritySnapshot?>(null)
+
+    private data class SecuritySnapshot(
+        val securityType: SecurityType,
+        val biometricType: SandboxSecurityManager.BiometricType,
+        val isPreferBiometric: Boolean
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+        Log.d(TAG, lifecycleTag("onCreate") + " savedState=" + (savedInstanceState != null)
+                + " intentAction=" + intent?.action + " extras=" + intent?.extras?.keySet())
+
         setupWindowForOverlay()
-        
         enableEdgeToEdge()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                startExitAnimation(false)
+                startExitAnimation(success = false)
             }
         })
 
-        resultIntent = Intent()
-        
-        
         packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
             ?: intent.getStringExtra(EXTRA_LOCKED_PACKAGE)
-            
-        userId = intent.getIntExtra(EXTRA_USER_ID, 0)
-            .takeIf { it != 0 } ?: intent.getIntExtra(EXTRA_LOCKED_UID, 0).let { 
-            UserHandle.getUserId(it) 
-        }
 
-        isSystemUnlock = ACTION_SYSTEM_UNLOCK == intent.action
-        
+        userId = intent.getIntExtra(EXTRA_USER_ID, 0).takeIf { it != 0 }
+            ?: UserHandle.getUserId(intent.getIntExtra(EXTRA_LOCKED_UID, 0))
+
+        appLabel = intent.getStringExtra(EXTRA_APP_LABEL)
+            ?: packageName
+            ?: "App"
+
         securityManager = SandboxSecurityManager(this)
+
+        lifecycleScope.launch {
+            val snap = withContext(Dispatchers.IO) {
+                if (!securityManager.isSetup()) return@withContext null
+                val bioType = if (securityManager.isBiometricEnabled()
+                                  && securityManager.isBiometricAvailable()) {
+                    securityManager.getBiometricType()
+                } else {
+                    SandboxSecurityManager.BiometricType.NONE
+                }
+                SecuritySnapshot(
+                    securityType = securityManager.getSecurityType(),
+                    biometricType = bioType,
+                    isPreferBiometric = securityManager.isPreferBiometric()
+                )
+            }
+            if (snap == null) {
+                unlockAndFinish()
+                return@launch
+            }
+            securitySnapshot.value = snap
+        }
 
         setContent {
             AppLockerTheme {
-                val isVisible = remember { mutableStateOf(false) }
-                
-                LaunchedEffect(Unit) {
-                    isVisible.value = true
-                    
-                    
-                    withContext(Dispatchers.IO) {
-                        if (!securityManager.isSetup()) {
-                            withContext(Dispatchers.Main) {
-                                unlockAndFinish()
-                            }
-                        }
-                    }
-                }
+                val snap = securitySnapshot.value
+                val focused = hasWindowFocus.value
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background.copy(alpha = 0f) 
+                    color = MaterialTheme.colorScheme.background
                 ) {
-                    
-                    var appLabel by remember { mutableStateOf<String?>(null) }
-                    var biometricType by remember { mutableStateOf(SandboxSecurityManager.BiometricType.NONE) }
-                    var isPreferBiometric by remember { mutableStateOf(false) }
-                    
-                    LaunchedEffect(Unit) {
-                        withContext(Dispatchers.IO) {
-                            val label = appLabel ?: packageName?.let { pkg ->
-                                try {
-                                    val pm = applicationContext.packageManager
-                                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-                                } catch (e: Exception) {
-                                    pkg
-                                }
-                            } ?: "App"
-                            
-                            val bioType = if (securityManager.isBiometricEnabled() && securityManager.isBiometricAvailable()) {
-                                    securityManager.getBiometricType()
-                            } else {
-                                    SandboxSecurityManager.BiometricType.NONE
-                            }
-                            
-                            val preferBio = securityManager.isPreferBiometric()
-                            
-                            withContext(Dispatchers.Main) {
-                                appLabel = label
-                                biometricType = bioType
-                                isPreferBiometric = preferBio
-                            }
-                        }
-                    }
-
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
+                    if (focused && snap != null) {
                         AuthenticateScreen(
                             securityManager = securityManager,
-                            appLabel = appLabel ?: "App",
-                            onSuccess = { startExitAnimation(true) },
-                            onCancel = { startExitAnimation(false) },
-                            biometricType = biometricType,
-                            onBiometricClick = { showBiometricPrompt(appLabel ?: "App") },
-                            isPreferBiometric = isPreferBiometric,
+                            securityType = snap.securityType,
+                            appLabel = appLabel,
+                            onSuccess = { startExitAnimation(success = true) },
+                            onCancel = { startExitAnimation(success = false) },
+                            biometricType = snap.biometricType,
+                            onBiometricClick = { showBiometricPrompt() },
+                            isPreferBiometric = snap.isPreferBiometric,
                             isExiting = isExiting.value
                         )
                     }
@@ -150,27 +129,65 @@ class AuthenticateActivity : ComponentActivity() {
             }
         }
     }
-    
-    private fun startExitAnimation(success: Boolean) {
-        if (isExiting.value) return
-        isExiting.value = true
-        
-        
-        val exitDuration = 300L 
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (success) {
-                unlockAndFinish()
-            } else {
-                cancelAndFinish()
-            }
-        }, exitDuration)
-    }
-    
-    
 
-    private fun showBiometricPrompt(label: String) {
-        isShowingBiometric = true
-        val negativeButtonText = when (securityManager.getSecurityType()) {
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        Log.d(TAG, lifecycleTag("onWindowFocusChanged") + " hasFocus=" + hasFocus)
+        if (hasFocus && !hasWindowFocus.value) {
+            lifecycleScope.launch {
+                delay(UI_DEFER_MS)
+                hasWindowFocus.value = true
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        Log.d(TAG, lifecycleTag("onStart"))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d(TAG, lifecycleTag("onResume"))
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        Log.d(TAG, lifecycleTag("onNewIntent") + " action=" + intent.action
+                + " extras=" + intent.extras?.keySet())
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        Log.d(TAG, lifecycleTag("onRestart") + " RESTART - activity instance was reused!")
+    }
+
+    override fun onStop() {
+        super.onStop()
+        Log.d(TAG, lifecycleTag("onStop") + " isFinishing=" + isFinishing)
+    }
+
+    private fun lifecycleTag(phase: String): String {
+        val inst = Integer.toHexString(System.identityHashCode(this))
+        return "$phase pid=${Process.myPid()} inst=$inst task=$taskId state=$authState finishing=$isFinishing"
+    }
+
+    private fun startExitAnimation(success: Boolean) {
+        if (authState == AuthState.EXITING || authState == AuthState.FINISHED) return
+        authState = AuthState.EXITING
+        isExiting.value = true
+
+        lifecycleScope.launch {
+            delay(EXIT_ANIMATION_MS)
+            if (success) unlockAndFinish() else cancelAndFinish()
+        }
+    }
+
+    private fun showBiometricPrompt() {
+        if (authState != AuthState.IDLE || isFinishing) return
+        authState = AuthState.PROMPT_SHOWING
+
+        val negativeButtonText = when (securitySnapshot.value?.securityType) {
             SecurityType.PIN -> "Use PIN"
             SecurityType.PASSWORD -> "Use Password"
             SecurityType.PATTERN -> "Use Pattern"
@@ -178,9 +195,9 @@ class AuthenticateActivity : ComponentActivity() {
         }
 
         val prompt = BiometricPrompt.Builder(this)
-            .setTitle("Unlock $label")
+            .setTitle("Unlock $appLabel")
             .setNegativeButton(negativeButtonText, mainExecutor) { _, _ ->
-                isShowingBiometric = false
+                if (authState == AuthState.PROMPT_SHOWING) authState = AuthState.IDLE
             }
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or
@@ -188,39 +205,48 @@ class AuthenticateActivity : ComponentActivity() {
             )
             .build()
 
+        biometricCancellationSignal?.cancel()
+        val signal = CancellationSignal()
+        biometricCancellationSignal = signal
+
         prompt.authenticate(
-            CancellationSignal(),
+            signal,
             mainExecutor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                     super.onAuthenticationSucceeded(result)
-                    isShowingBiometric = false
-                    startExitAnimation(true)
+                    biometricCancellationSignal = null
+                    if (authState == AuthState.PROMPT_SHOWING) {
+                        authState = AuthState.IDLE
+                        startExitAnimation(success = true)
+                    }
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                     super.onAuthenticationError(errorCode, errString)
-                    isShowingBiometric = false
-                    if (errorCode != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED &&
-                        errorCode != BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON) {
+                    biometricCancellationSignal = null
+                    val wasShowing = authState == AuthState.PROMPT_SHOWING
+                    if (wasShowing) authState = AuthState.IDLE
+                    if (wasShowing
+                        && errorCode != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED
+                        && errorCode != BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON
+                        && errorCode != BiometricPrompt.BIOMETRIC_ERROR_CANCELED) {
                         cancelAndFinish()
                     }
                 }
             }
         )
     }
-    
+
     private fun setupWindowForOverlay() {
         window?.apply {
             addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
             )
-
-            addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
-
             attributes = attributes?.apply {
                 privateFlags = privateFlags or
                     WindowManager.LayoutParams.SYSTEM_FLAG_SHOW_FOR_ALL_USERS
@@ -228,66 +254,85 @@ class AuthenticateActivity : ComponentActivity() {
         }
     }
 
+    private fun buildResultData(): Intent = Intent().apply {
+        putExtra(EXTRA_LOCKED_PACKAGE, packageName)
+        putExtra(EXTRA_LOCKED_UID, userId)
+    }
+
     private fun unlockAndFinish() {
-        if (isFinishing) return
+        if (authState == AuthState.FINISHED || isFinishing) return
+        authState = AuthState.FINISHED
         packageName?.let { pkg ->
             val sandboxManager = getSystemService(Context.AX_SANDBOX_SERVICE) as? AxSandboxManager
             sandboxManager?.unlockApp(pkg, userId)
         }
-        resultIntent?.apply {
-            putExtra(EXTRA_LOCKED_PACKAGE, packageName)
-            putExtra(EXTRA_LOCKED_UID, userId)
-        }
-        setResult(Activity.RESULT_OK, resultIntent)
-        isAuthSuccess = true
+        setResult(Activity.RESULT_OK, buildResultData())
         finish()
+        Process.killProcess(Process.myPid())
     }
 
     private fun cancelAndFinish() {
-        if (isFinishing) return
-        resultIntent?.apply {
-            putExtra(EXTRA_LOCKED_PACKAGE, packageName)
-            putExtra(EXTRA_LOCKED_UID, userId)
-        }
-        setResult(Activity.RESULT_CANCELED, resultIntent)
-        finishAndRemoveTask()
+        if (authState == AuthState.FINISHED || isFinishing) return
+        authState = AuthState.FINISHED
+        setResult(Activity.RESULT_CANCELED, buildResultData())
+        finish()
+        Process.killProcess(Process.myPid())
     }
 
     override fun onPause() {
         super.onPause()
-        if (!isChangingConfigurations && !isAuthSuccess && !isShowingBiometric) {
-            cancelAndFinish()
+        Log.d(TAG, lifecycleTag("onPause"))
+        if (authState == AuthState.PROMPT_SHOWING) {
+            Log.d(TAG, lifecycleTag("onPause") + " skipping kill - bio prompt active")
+            return
         }
+        biometricCancellationSignal?.cancel()
+        biometricCancellationSignal = null
+        if (authState != AuthState.FINISHED) {
+            authState = AuthState.FINISHED
+            setResult(Activity.RESULT_CANCELED, buildResultData())
+            finish()
+        }
+        Log.d(TAG, lifecycleTag("onPause") + " killing process")
+        Process.killProcess(Process.myPid())
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!isShowingBiometric) {
+        Log.d(TAG, lifecycleTag("onUserLeaveHint"))
+        if (authState == AuthState.IDLE) {
             cancelAndFinish()
         }
     }
 
     override fun onDestroy() {
+        Log.d(TAG, lifecycleTag("onDestroy"))
+        biometricCancellationSignal?.cancel()
+        biometricCancellationSignal = null
         super.onDestroy()
-        Process.killProcess(Process.myPid())
     }
 
     companion object {
+        private const val TAG = "AxAppLocker.Auth"
         const val EXTRA_PACKAGE_NAME = "package_name"
         const val EXTRA_APP_LABEL = "app_label"
         const val EXTRA_USER_ID = "user_id"
-        
+
         const val EXTRA_LOCKED_PACKAGE = "LOCKED_PACKAGE"
         const val EXTRA_LOCKED_UID = "LOCKED_UID"
-        
+
         const val ACTION_AUTHENTICATE = "com.android.applocker.action.AUTHENTICATE"
         const val ACTION_SYSTEM_UNLOCK = "com.android.applocker.action.SYSTEM_UNLOCK"
+
+        private const val EXIT_ANIMATION_MS = 300L
+        private const val UI_DEFER_MS = 400L
     }
 }
 
 @Composable
 fun AuthenticateScreen(
     securityManager: SandboxSecurityManager,
+    securityType: SecurityType,
     appLabel: String,
     onSuccess: () -> Unit,
     onCancel: () -> Unit,
@@ -296,13 +341,16 @@ fun AuthenticateScreen(
     isPreferBiometric: Boolean = false,
     isExiting: Boolean = false
 ) {
-    LaunchedEffect(biometricType) {
-        if (biometricType != SandboxSecurityManager.BiometricType.NONE && isPreferBiometric) {
+    var didAutoTriggerBio by remember { mutableStateOf(false) }
+    LaunchedEffect(biometricType, isPreferBiometric) {
+        if (!didAutoTriggerBio
+            && biometricType != SandboxSecurityManager.BiometricType.NONE
+            && isPreferBiometric) {
+            didAutoTriggerBio = true
             onBiometricClick()
         }
     }
 
-    val securityType = securityManager.getSecurityType()
     val promptText = "Enter your Sandbox credential to unlock $appLabel"
     
     when (securityType) {

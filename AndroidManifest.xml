@@ -29,13 +29,13 @@
         android:label="AppLocker"
         android:icon="@drawable/lock_icon"
         android:supportsRtl="true"
-        android:extractNativeLibs="true"
+        android:extractNativeLibs="false"
         android:roundIcon="@drawable/lock_icon"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory">
         <activity
             android:exported="true"
-            android:process=":auth"
             android:name="com.android.applocker.AuthenticateActivity"
+            android:excludeFromRecents="true"
             android:clearTaskOnLaunch="true"
             android:screenOrientation="portrait"
             android:configChanges="smallestScreenSize|screenSize|uiMode|screenLayout|orientation"
