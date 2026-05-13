@@ -262,13 +262,12 @@ class AuthenticateActivity : ComponentActivity() {
     private fun unlockAndFinish() {
         if (authState == AuthState.FINISHED || isFinishing) return
         authState = AuthState.FINISHED
-        packageName?.let { pkg ->
-            val sandboxManager = getSystemService(Context.AX_SANDBOX_SERVICE) as? AxSandboxManager
-            sandboxManager?.unlockApp(pkg, userId)
+        if (packageName != null) {
+            (getSystemService(Context.AX_SANDBOX_SERVICE) as? AxSandboxManager)
+                ?.unlockApp(packageName!!, userId)
         }
         setResult(Activity.RESULT_OK, buildResultData())
         finish()
-        Process.killProcess(Process.myPid())
     }
 
     private fun cancelAndFinish() {
@@ -276,14 +275,13 @@ class AuthenticateActivity : ComponentActivity() {
         authState = AuthState.FINISHED
         setResult(Activity.RESULT_CANCELED, buildResultData())
         finish()
-        Process.killProcess(Process.myPid())
     }
 
     override fun onPause() {
         super.onPause()
         Log.d(TAG, lifecycleTag("onPause"))
         if (authState == AuthState.PROMPT_SHOWING) {
-            Log.d(TAG, lifecycleTag("onPause") + " skipping kill - bio prompt active")
+            Log.d(TAG, lifecycleTag("onPause") + " skipping - bio prompt active")
             return
         }
         biometricCancellationSignal?.cancel()
@@ -293,8 +291,6 @@ class AuthenticateActivity : ComponentActivity() {
             setResult(Activity.RESULT_CANCELED, buildResultData())
             finish()
         }
-        Log.d(TAG, lifecycleTag("onPause") + " killing process")
-        Process.killProcess(Process.myPid())
     }
 
     override fun onUserLeaveHint() {
