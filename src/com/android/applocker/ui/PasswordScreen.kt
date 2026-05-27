@@ -10,17 +10,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -35,6 +38,7 @@ private object PasswordScreenShapes {
     val button = RoundedCornerShape(28.dp)
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PasswordScreen(
     isSetup: Boolean = false,
@@ -45,13 +49,16 @@ fun PasswordScreen(
     onBack: (() -> Unit)? = null,
     biometricType: SandboxSecurityManager.BiometricType = SandboxSecurityManager.BiometricType.NONE,
     onBiometricClick: () -> Unit = {},
-    isExiting: Boolean = false
+    isExiting: Boolean = false,
+    requestInitialFocus: Boolean = true
 ) {
     var enteredPassword by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
     
     
     var isVisible by remember { mutableStateOf(false) }
@@ -73,6 +80,13 @@ fun PasswordScreen(
         targetValue = if (isVisible && !isExiting) 1f else 0f,
         animationSpec = tween(300, delayMillis = 100)
     )
+
+    LaunchedEffect(requestInitialFocus) {
+        if (requestInitialFocus) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     LaunchedEffect(confirmPassword) {
         enteredPassword = ""
@@ -176,6 +190,10 @@ fun PasswordScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged {
+                        if (it.isFocused) keyboardController?.show()
+                    }
                     .graphicsLayer { 
                         translationX = shakeTranslation
                         alpha = inputAlpha

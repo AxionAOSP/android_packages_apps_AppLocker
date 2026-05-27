@@ -244,8 +244,7 @@ class AuthenticateActivity : ComponentActivity() {
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             )
             attributes = attributes?.apply {
                 privateFlags = privateFlags or
@@ -371,7 +370,9 @@ fun AuthenticateScreen(
                 onBack = onCancel,
                 biometricType = biometricType,
                 onBiometricClick = onBiometricClick,
-                isExiting = isExiting
+                isExiting = isExiting,
+                requestInitialFocus = biometricType == SandboxSecurityManager.BiometricType.NONE ||
+                    !isPreferBiometric
             )
         }
         SecurityType.PATTERN -> {
