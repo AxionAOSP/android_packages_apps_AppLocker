@@ -256,6 +256,7 @@ class AuthenticateActivity : ComponentActivity() {
     private fun buildResultData(): Intent = Intent().apply {
         putExtra(EXTRA_LOCKED_PACKAGE, packageName)
         putExtra(EXTRA_LOCKED_UID, userId)
+        putExtra(EXTRA_USER_ID, userId)
     }
 
     private fun unlockAndFinish() {
