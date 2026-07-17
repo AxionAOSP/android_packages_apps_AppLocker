@@ -286,11 +286,6 @@ class AuthenticateActivity : ComponentActivity() {
         }
         biometricCancellationSignal?.cancel()
         biometricCancellationSignal = null
-        if (authState != AuthState.FINISHED) {
-            authState = AuthState.FINISHED
-            setResult(Activity.RESULT_CANCELED, buildResultData())
-            finish()
-        }
     }
 
     override fun onUserLeaveHint() {
