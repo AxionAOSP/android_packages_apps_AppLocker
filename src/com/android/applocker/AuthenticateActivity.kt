@@ -22,11 +22,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
-import com.android.applocker.security.SecurityType
-import com.android.applocker.security.SandboxSecurityManager
-import com.android.applocker.ui.LockScreen
-import com.android.applocker.ui.PasswordScreen
-import com.android.applocker.ui.PatternScreen
+import com.android.axion.sandbox.security.SecurityType
+import com.android.axion.sandbox.security.SandboxSecurityManager
+import com.android.axion.sandbox.ui.LockScreen
+import com.android.axion.sandbox.ui.PasswordScreen
+import com.android.axion.sandbox.ui.PatternScreen
 import com.android.applocker.ui.theme.AppLockerTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
